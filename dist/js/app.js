@@ -14,16 +14,81 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var three_examples_jsm_loaders_OBJLoader_js__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! three/examples/jsm/loaders/OBJLoader.js */ "./node_modules/three/examples/jsm/loaders/OBJLoader.js");
 /* harmony import */ var three_examples_jsm_WebGL_js__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! three/examples/jsm/WebGL.js */ "./node_modules/three/examples/jsm/WebGL.js");
 /* harmony import */ var three_examples_jsm_libs_dat_gui_module_js__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! three/examples/jsm/libs/dat.gui.module.js */ "./node_modules/three/examples/jsm/libs/dat.gui.module.js");
+/* harmony import */ var three_examples_jsm_libs_stats_module_js__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! three/examples/jsm/libs/stats.module.js */ "./node_modules/three/examples/jsm/libs/stats.module.js");
 // Code JavaScript utilisant Three.js
 
 
 
 
- //import { Stats } from 'three/examples/jsm/libs/stats.module.js';
+
+
 
 if (!three_examples_jsm_WebGL_js__WEBPACK_IMPORTED_MODULE_3__.WEBGL.isWebGLAvailable()) {
   var warning = three_examples_jsm_WebGL_js__WEBPACK_IMPORTED_MODULE_3__.WEBGL.getWebGLErrorMessage();
   document.body.appendChild(warning);
+} //----------- FONCTIONS -----------//
+
+
+function CSVToArray(strData, strDelimiter) {
+  // Check to see if the delimiter is defined. If not,
+  // then default to comma.
+  strDelimiter = strDelimiter || ","; // Create a regular expression to parse the CSV values.
+
+  var objPattern = new RegExp( // Delimiters.
+  "(\\" + strDelimiter + "|\\r?\\n|\\r|^)" + // Quoted fields.
+  "(?:\"([^\"]*(?:\"\"[^\"]*)*)\"|" + // Standard fields.
+  "([^\"\\" + strDelimiter + "\\r\\n]*))", "gi"); // Create an array to hold our data. Give the array
+  // a default empty first row.
+
+  var arrData = [[]]; // Create an array to hold our individual pattern
+  // matching groups.
+
+  var arrMatches = null; // Keep looping over the regular expression matches
+  // until we can no longer find a match.
+
+  while (arrMatches = objPattern.exec(strData)) {
+    // Get the delimiter that was found.
+    var strMatchedDelimiter = arrMatches[1]; // Check to see if the given delimiter has a length
+    // (is not the start of string) and if it matches
+    // field delimiter. If id does not, then we know
+    // that this delimiter is a row delimiter.
+
+    if (strMatchedDelimiter.length && strMatchedDelimiter != strDelimiter) {
+      // Since we have reached a new row of data,
+      // add an empty row to our data array.
+      arrData.push([]);
+    } // Now that we have our delimiter out of the way,
+    // let's check to see which kind of value we
+    // captured (quoted or unquoted).
+
+
+    if (arrMatches[2]) {
+      // We found a quoted value. When we capture
+      // this value, unescape any double quotes.
+      var strMatchedValue = arrMatches[2].replace(new RegExp("\"\"", "g"), "\"");
+    } else {
+      // We found a non-quoted value.
+      var strMatchedValue = arrMatches[3];
+    } // Now that we have our value string, let's add
+    // it to the data array.
+
+
+    arrData[arrData.length - 1].push(strMatchedValue);
+  } // Return the parsed data.
+
+
+  return arrData;
+} // Converts the positions from (lat, lon) to a position (x, y, z)
+// on a sphere of a given radius.
+
+
+function latLonToVector3(lat, lon, radius) {
+  var phi = lat * Math.PI / 180;
+  var theta = (lon - 180) * Math.PI / 180;
+  var x = -radius * Math.cos(phi) * Math.cos(theta);
+  var y = radius * Math.sin(phi);
+  var z = radius * Math.cos(phi) * Math.sin(theta);
+  return new three_build_three_module_js__WEBPACK_IMPORTED_MODULE_0__.Vector3(x, y, z);
 }
 
 var renderer = new three_build_three_module_js__WEBPACK_IMPORTED_MODULE_0__.WebGLRenderer();
@@ -107,7 +172,19 @@ window.addEventListener('resize', function () {
 }); //----------- CONTROLS -----------//
 // Création de contrôles de type "orbital"
 
-var controls = new three_examples_jsm_controls_OrbitControls_js__WEBPACK_IMPORTED_MODULE_1__.OrbitControls(camera, renderer.domElement); //----------- INTERFACE DE CONTROLE -----------//
+var controls = new three_examples_jsm_controls_OrbitControls_js__WEBPACK_IMPORTED_MODULE_1__.OrbitControls(camera, renderer.domElement); //---- MOUSEMOVE
+
+var mouseNDC = new three_build_three_module_js__WEBPACK_IMPORTED_MODULE_0__.Vector2();
+var mouse = new three_build_three_module_js__WEBPACK_IMPORTED_MODULE_0__.Vector2();
+document.addEventListener('mousemove', function (e) {
+  mouse.x = e.clientX;
+  mouse.y = e.clientY; // Position du pointeur de la souris en NDC (entre -1 et 1)
+
+  mouseNDC.x = e.clientX / window.innerWidth * 2 - 1;
+  mouseNDC.y = -(e.clientY / window.innerHeight) * 2 + 1;
+}, false);
+var raycaster = new three_build_three_module_js__WEBPACK_IMPORTED_MODULE_0__.Raycaster();
+var intersectedObject = null; //----------- INTERFACE DE CONTROLE -----------//
 
 var controlObject = {
   rotationSpeed: 0.001,
@@ -139,12 +216,38 @@ gui.add(controlObject, 'directionalLightZ', -200, 200).name('Light Z').onChange(
 }); //---- On/Off animation
 
 gui.add(controlObject, 'animation').name('Animation'); //----------- STATS -----------//
-// // Création d'un objet Stats
-// let stats = new Stats();
-// stats.showPanel(1); 
-// // Ajout de l'interface au DOM
-// document.body.appendChild(stats.dom);
-//----------- RENDU -----------//
+// Création d'un objet Stats
+
+var stats = new three_examples_jsm_libs_stats_module_js__WEBPACK_IMPORTED_MODULE_5__.default();
+stats.showPanel(0); // 0: fps, 1: ms, 2: mb, 3+: custom
+// Ajout de l'interface au DOM
+
+document.body.appendChild(stats.domElement);
+var capitalGeo = new three_build_three_module_js__WEBPACK_IMPORTED_MODULE_0__.SphereBufferGeometry(0.1, 16, 16);
+var floader = new three_build_three_module_js__WEBPACK_IMPORTED_MODULE_0__.FileLoader(); // URL du fichier à charger, fonction à exécuter une fois le fichier chargé
+
+floader.load('./assets/UN_Capital_Cities_2014.csv', function (data) {
+  // Ecriture des données dans un tableau
+  var capitals = CSVToArray(data, ";"); // Traitement de chaque ligne du tableau
+
+  capitals.forEach(function (capital) {
+    var lat = parseFloat(capital[2]);
+    var lon = parseFloat(capital[3]);
+    var pos = latLonToVector3(lat, lon, 15);
+    var capitalMat = new three_build_three_module_js__WEBPACK_IMPORTED_MODULE_0__.MeshBasicMaterial({
+      color: 0xff0000
+    }); // Objet mesh correspondant à la capitale
+
+    var capObj = new three_build_three_module_js__WEBPACK_IMPORTED_MODULE_0__.Mesh(capitalGeo, capitalMat);
+    capObj.position.copy(pos);
+    earth.add(capObj);
+    capObj.infoData = {
+      country: capital[0],
+      capcity: capital[1],
+      population: capital[4]
+    };
+  });
+}); //----------- RENDU -----------//
 
 function render() {
   //earth.rotation.y += 0.0025;
@@ -152,6 +255,58 @@ function render() {
   if (controlObject.animation) {
     earth.rotateY(controlObject.rotationSpeed);
     athmosphere.rotateY(.0005);
+  } // Affichage des capitale ou non suivant la distance de la caméra
+
+
+  var dist = camera.position.length();
+
+  if (dist > 50) {
+    for (var i = 0; i < earth.children.length; i++) {
+      earth.children[i].visible = false;
+    }
+  } else {
+    for (var _i = 0; _i < earth.children.length; _i++) {
+      earth.children[_i].visible = true;
+    }
+  } // Calcule du rayon entre la caméra et le point survolé par la souris
+
+
+  raycaster.setFromCamera(mouseNDC, camera);
+  var intersects = raycaster.intersectObject(earth, true);
+
+  if (intersects.length > 1 && intersects[1].object != earth && intersects[1].object != athmosphere) {
+    if (intersects[1].object != intersectedObject) {
+      if (intersectedObject != null) {
+        intersectedObject.material.color.set(0xff0000);
+        var element = document.getElementById("info");
+        document.body.removeChild(element);
+      }
+
+      intersectedObject = intersects[1].object;
+      intersectedObject.material.color.set(0x00ff00);
+      var div = document.createElement("div");
+      div.id = 'info';
+      div.className = 'label';
+      var country = 'Pays : ' + intersectedObject.infoData.country;
+      var city = 'Capitale : ' + intersectedObject.infoData.city;
+      var population = 'Population (en milliers) : ' + intersectedObject.infoData.population;
+      div.innerHTML = country + '<br>' + city + '<br>' + population;
+      div.style.position = "absolute";
+      div.style.backgroundColor = "#f1f1f1";
+      div.style.top = mouse.y + 'px';
+      div.style.left = mouse.x + 'px';
+      div.style.padding = '5px';
+      document.body.appendChild(div);
+    }
+  } else {
+    if (intersectedObject != null) {
+      intersectedObject.material.color.set(0xff0000);
+      intersectedObject = null;
+
+      var _element = document.getElementById("info");
+
+      document.body.removeChild(_element);
+    }
   } // Mise à jour des paramètres de contrôle de la caméra
 
 
@@ -54628,6 +54783,187 @@ var index = {
 
 
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (index);
+
+
+/***/ }),
+
+/***/ "./node_modules/three/examples/jsm/libs/stats.module.js":
+/*!**************************************************************!*\
+  !*** ./node_modules/three/examples/jsm/libs/stats.module.js ***!
+  \**************************************************************/
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+var Stats = function () {
+
+	var mode = 0;
+
+	var container = document.createElement( 'div' );
+	container.style.cssText = 'position:fixed;top:0;left:0;cursor:pointer;opacity:0.9;z-index:10000';
+	container.addEventListener( 'click', function ( event ) {
+
+		event.preventDefault();
+		showPanel( ++ mode % container.children.length );
+
+	}, false );
+
+	//
+
+	function addPanel( panel ) {
+
+		container.appendChild( panel.dom );
+		return panel;
+
+	}
+
+	function showPanel( id ) {
+
+		for ( var i = 0; i < container.children.length; i ++ ) {
+
+			container.children[ i ].style.display = i === id ? 'block' : 'none';
+
+		}
+
+		mode = id;
+
+	}
+
+	//
+
+	var beginTime = ( performance || Date ).now(), prevTime = beginTime, frames = 0;
+
+	var fpsPanel = addPanel( new Stats.Panel( 'FPS', '#0ff', '#002' ) );
+	var msPanel = addPanel( new Stats.Panel( 'MS', '#0f0', '#020' ) );
+
+	if ( self.performance && self.performance.memory ) {
+
+		var memPanel = addPanel( new Stats.Panel( 'MB', '#f08', '#201' ) );
+
+	}
+
+	showPanel( 0 );
+
+	return {
+
+		REVISION: 16,
+
+		dom: container,
+
+		addPanel: addPanel,
+		showPanel: showPanel,
+
+		begin: function () {
+
+			beginTime = ( performance || Date ).now();
+
+		},
+
+		end: function () {
+
+			frames ++;
+
+			var time = ( performance || Date ).now();
+
+			msPanel.update( time - beginTime, 200 );
+
+			if ( time >= prevTime + 1000 ) {
+
+				fpsPanel.update( ( frames * 1000 ) / ( time - prevTime ), 100 );
+
+				prevTime = time;
+				frames = 0;
+
+				if ( memPanel ) {
+
+					var memory = performance.memory;
+					memPanel.update( memory.usedJSHeapSize / 1048576, memory.jsHeapSizeLimit / 1048576 );
+
+				}
+
+			}
+
+			return time;
+
+		},
+
+		update: function () {
+
+			beginTime = this.end();
+
+		},
+
+		// Backwards Compatibility
+
+		domElement: container,
+		setMode: showPanel
+
+	};
+
+};
+
+Stats.Panel = function ( name, fg, bg ) {
+
+	var min = Infinity, max = 0, round = Math.round;
+	var PR = round( window.devicePixelRatio || 1 );
+
+	var WIDTH = 80 * PR, HEIGHT = 48 * PR,
+		TEXT_X = 3 * PR, TEXT_Y = 2 * PR,
+		GRAPH_X = 3 * PR, GRAPH_Y = 15 * PR,
+		GRAPH_WIDTH = 74 * PR, GRAPH_HEIGHT = 30 * PR;
+
+	var canvas = document.createElement( 'canvas' );
+	canvas.width = WIDTH;
+	canvas.height = HEIGHT;
+	canvas.style.cssText = 'width:80px;height:48px';
+
+	var context = canvas.getContext( '2d' );
+	context.font = 'bold ' + ( 9 * PR ) + 'px Helvetica,Arial,sans-serif';
+	context.textBaseline = 'top';
+
+	context.fillStyle = bg;
+	context.fillRect( 0, 0, WIDTH, HEIGHT );
+
+	context.fillStyle = fg;
+	context.fillText( name, TEXT_X, TEXT_Y );
+	context.fillRect( GRAPH_X, GRAPH_Y, GRAPH_WIDTH, GRAPH_HEIGHT );
+
+	context.fillStyle = bg;
+	context.globalAlpha = 0.9;
+	context.fillRect( GRAPH_X, GRAPH_Y, GRAPH_WIDTH, GRAPH_HEIGHT );
+
+	return {
+
+		dom: canvas,
+
+		update: function ( value, maxValue ) {
+
+			min = Math.min( min, value );
+			max = Math.max( max, value );
+
+			context.fillStyle = bg;
+			context.globalAlpha = 1;
+			context.fillRect( 0, 0, WIDTH, GRAPH_Y );
+			context.fillStyle = fg;
+			context.fillText( round( value ) + ' ' + name + ' (' + round( min ) + '-' + round( max ) + ')', TEXT_X, TEXT_Y );
+
+			context.drawImage( canvas, GRAPH_X + PR, GRAPH_Y, GRAPH_WIDTH - PR, GRAPH_HEIGHT, GRAPH_X, GRAPH_Y, GRAPH_WIDTH - PR, GRAPH_HEIGHT );
+
+			context.fillRect( GRAPH_X + GRAPH_WIDTH - PR, GRAPH_Y, PR, GRAPH_HEIGHT );
+
+			context.fillStyle = bg;
+			context.globalAlpha = 0.9;
+			context.fillRect( GRAPH_X + GRAPH_WIDTH - PR, GRAPH_Y, PR, round( ( 1 - ( value / maxValue ) ) * GRAPH_HEIGHT ) );
+
+		}
+
+	};
+
+};
+
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (Stats);
 
 
 /***/ }),
